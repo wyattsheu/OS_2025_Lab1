@@ -39,3 +39,5 @@ wait $RECEIVER_PID
 
 echo ""
 echo "=== 測試完成 ==="
+pkill -f receiver; pkill -f sender
+rm -f /dev/shm/sem.oslab1_sem_* /dev/shm/oslab1_shm /dev/mqueue/oslab1_mq

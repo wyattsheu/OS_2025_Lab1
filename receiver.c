@@ -45,8 +45,20 @@ void receive(message_t *message_ptr, mailbox_t *mailbox_ptr)
 	else if (mailbox_ptr->flag == SHARED_MEM) {
 		// (3) Shared Memory with Semaphore
 		// 等待 sender 寫完
-		sem_t *sem_empty = sem_open("/oslab1_sem_empty", 0);
-		sem_t *sem_full = sem_open("/oslab1_sem_full", 0);
+		sem_t *sem_empty = sem_open(SEM_EMPTY_NAME, 0);
+		if (sem_empty == SEM_FAILED) {
+			// 如果還沒被建立，就建立並設為 1（可寫）
+			sem_empty = sem_open(SEM_EMPTY_NAME, O_CREAT, 0666, 1);
+		}
+		sem_t *sem_full = sem_open(SEM_FULL_NAME, 0);
+		if (sem_full == SEM_FAILED) {
+			// 如果還沒被建立，就建立並設為 0（不可讀）
+			sem_full = sem_open(SEM_FULL_NAME, O_CREAT, 0666, 0);
+		}
+		if (sem_empty == SEM_FAILED || sem_full == SEM_FAILED) {
+			perror("sem_open");
+			exit(1);
+		}
 
 		sem_wait(sem_full); // 等待 sender 寫入資料
 
@@ -93,25 +105,41 @@ int main(int argc, char *argv[])
 	// --- 初始化 mailbox ---
 	if (mechanism == MSG_PASSING) {
 		// 開啟 POSIX message queue
-		strcpy(mailbox.storage.posix_mq.name, "/oslab1_mq");
+		strcpy(mailbox.storage.posix_mq.name, MQ_NAME);
 		memset(&mailbox.storage.posix_mq.attr, 0, sizeof(struct mq_attr));
 		mailbox.storage.posix_mq.attr.mq_flags = 0;
 		mailbox.storage.posix_mq.attr.mq_maxmsg = 128;
 		mailbox.storage.posix_mq.attr.mq_msgsize = 1024;
 		// receiver 要用 O_CREAT | O_RDONLY
-		mailbox.storage.posix_mq.mqd = mq_open(
-			mailbox.storage.posix_mq.name,
-			O_CREAT | O_RDONLY | O_NONBLOCK,
-			0666,
-			&mailbox.storage.posix_mq.attr);
-		if (mailbox.storage.posix_mq.mqd == (mqd_t)-1) {
+		// 使用 O_RDWR 以容忍 sender 或 receiver 任一方先啟動
+		int retries = 50;
+		while (retries--) {
+			mailbox.storage.posix_mq.mqd = mq_open(
+				mailbox.storage.posix_mq.name,
+				O_CREAT | O_RDWR | O_NONBLOCK,
+				0666,
+				NULL);
+			if (mailbox.storage.posix_mq.mqd != (mqd_t)-1)
+				break;
+			if (errno == ENOENT || errno == ENXIO || errno == EINVAL) {
+				usleep(2000);
+				continue;
+			}
 			perror("mq_open");
+			exit(1);
+		}
+		if (mailbox.storage.posix_mq.mqd == (mqd_t)-1) {
+			fprintf(stderr, "mq_open retry exhausted\n");
+			exit(1);
+		}
+		if (mq_getattr(mailbox.storage.posix_mq.mqd, &mailbox.storage.posix_mq.attr) == -1) {
+			perror("mq_getattr");
 			exit(1);
 		}
 	}
 	else if (mechanism == SHARED_MEM) {
 		// 開啟或創建共享記憶體
-		int shm_fd = shm_open("/oslab1_shm", O_CREAT | O_RDWR, 0666);
+		int shm_fd = shm_open(SHM_NAME, O_CREAT | O_RDWR, 0666);
 		if (shm_fd == -1) {
 			perror("shm_open");
 			exit(1);
@@ -129,8 +157,8 @@ int main(int argc, char *argv[])
 		}
 
 		// 開啟或創建 semaphore
-		sem_t *sem_empty = sem_open("/oslab1_sem_empty", O_CREAT, 0666, 1); // 1 表示「一開始可寫」
-		sem_t *sem_full = sem_open("/oslab1_sem_full", O_CREAT, 0666, 0);	// 0 表示「目前沒有資料可讀」
+		sem_t *sem_empty = sem_open(SEM_EMPTY_NAME, O_CREAT, 0666, 1); // 1 表示「一開始可寫」
+		sem_t *sem_full = sem_open(SEM_FULL_NAME, O_CREAT, 0666, 0);   // 0 表示「目前沒有資料可讀」
 		if (sem_empty == SEM_FAILED || sem_full == SEM_FAILED) {
 			perror("sem_open");
 			exit(1);
@@ -165,9 +193,9 @@ int main(int argc, char *argv[])
 	else if (mechanism == SHARED_MEM) {
 		// 清理共享記憶體和 semaphore
 		munmap(mailbox.storage.shm_addr, MSG_SIZE);
-		shm_unlink("/oslab1_shm");
-		sem_unlink("/oslab1_sem_empty");
-		sem_unlink("/oslab1_sem_full");
+		shm_unlink(SHM_NAME);
+		sem_unlink(SEM_EMPTY_NAME);
+		sem_unlink(SEM_FULL_NAME);
 	}
 
 	return 0;

@@ -4,9 +4,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/ipc.h>
-#include <sys/msg.h>
-#include <sys/shm.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <time.h>
@@ -21,6 +18,11 @@
 #define MQ_NAME_LEN 64
 #define MSG_SIZE 1024
 #define EXIT_MSG "__EXIT__"
+// 統一資源名稱
+#define MQ_NAME "/oslab1_mq"
+#define SHM_NAME "/oslab1_shm"
+#define SEM_EMPTY_NAME "/oslab1_sem_empty"
+#define SEM_FULL_NAME "/oslab1_sem_full"
 
 typedef struct {
 	int flag; // 1 for message passing, 2 for shared memory
