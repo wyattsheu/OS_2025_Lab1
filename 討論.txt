@@ -1,0 +1,11 @@
+測試結果分析
+Message Passing (Message Queue)
+Sender 時間: 0.000185 秒
+Receiver 時間: 0.000277 秒
+Shared Memory
+Sender 時間: 0.000050 秒
+Receiver 時間: 0.000028 秒
+性能比較
+Shared Memory 比 Message Passing 快約 3-10 倍！
+這符合理論預期：Shared Memory 是零拷貝，只需要一次 strcpy
+Message Queue 需要 user→kernel→user 的雙向拷貝，成本更高
